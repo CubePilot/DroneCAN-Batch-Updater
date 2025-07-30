@@ -1,0 +1,13 @@
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114",  # missing-module-docstring
+    "C0115",  # missing-class-docstring
+    "C0116",  # missing-function-docstring
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.master]
+ignore = ["venv", ".venv", "__pycache__", "build", "dist", "src/uploader.py"]
