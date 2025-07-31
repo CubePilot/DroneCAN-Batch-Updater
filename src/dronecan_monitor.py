@@ -11,6 +11,7 @@ from typing import List, Optional
 import dronecan
 
 from dronecan_node import DroneCANNode, RemoteDroneCANNode
+from logger import get_logger
 
 
 
@@ -24,6 +25,7 @@ def get_resource_path(relative_path):
 class DroneCaNMonitor:
     def __init__(self, progress_ui):
         self.progress_ui = progress_ui
+        self.logger = get_logger()
         self.firmware_dir = get_resource_path("firmware")
         self.node: Optional[dronecan.node.Node] = None
         self.node_manager: Optional[DroneCANNode] = None
@@ -283,8 +285,16 @@ class DroneCaNMonitor:
 
     
     def _log_output(self, message: str):
-        """Log output to the progress UI console buffer"""
-        self.progress_ui.add_console_output(message)
+        """Log output to the progress UI console buffer and log files"""
+        # Log to file
+        self.logger.log_dronecan(message)
+        
+        # Also send to UI
+        if hasattr(self.progress_ui, "add_console_output"):
+            self.progress_ui.add_console_output(message)
+        else:
+            # Fallback to regular print if progress UI is not ready
+            print(message)
     
     def _start_immediate_updates(self, node):
         """Start firmware updates immediately for discovered nodes that need updates"""

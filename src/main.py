@@ -28,11 +28,13 @@ def get_resource_path(relative_path):
 from cube_updater import CubeUpdater
 from dronecan_monitor import DroneCaNMonitor
 from progress_ui import ProgressUI
+from logger import get_logger, shutdown_logger
 
 
 class BatchFirmwareUpdater:
     def __init__(self, auto_yes=False, skip_firmware=False):
         self.console = Console()
+        self.logger = get_logger()
         self.progress_ui = ProgressUI(self.console)
         # Start unified progress display
         self.progress_ui.start_progress_display()
@@ -144,7 +146,11 @@ class BatchFirmwareUpdater:
 
         except Exception as e:
             self.console.print(f"[red]Error: {str(e)}[/red]")
+            self.logger.log_main(f"Application error: {str(e)}", "ERROR")
             return 1
+        finally:
+            # Always shutdown logger when exiting
+            shutdown_logger()
 
 
 def main():

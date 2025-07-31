@@ -9,6 +9,7 @@ from typing import List, Optional
 
 # Import the existing uploader module
 from uploader import firmware, ports_to_try, uploader
+from logger import get_logger
 
 
 def get_resource_path(relative_path):
@@ -33,11 +34,16 @@ class CubeDevice:
 class CubeUpdater:
     def __init__(self, progress_ui):
         self.progress_ui = progress_ui
+        self.logger = get_logger()
         self.firmware_dir = get_resource_path("firmware")
         self.detected_devices: List[CubeDevice] = []
 
     def _log_output(self, message: str):
-        """Log output to the progress UI console buffer"""
+        """Log output to the progress UI console buffer and log files"""
+        # Log to file
+        self.logger.log_cube(message)
+        
+        # Also send to UI
         if hasattr(self.progress_ui, "add_console_output"):
             self.progress_ui.add_console_output(message)
         else:
