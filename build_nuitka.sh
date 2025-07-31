@@ -18,7 +18,11 @@ fi
 
 # Activate virtual environment
 echo "📦 Activating virtual environment..."
-source venv/bin/activate
+if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+    source venv/Scripts/activate
+else
+    source venv/bin/activate
+fi
 
 # Install dependencies from requirements.txt
 if [ -f "requirements.txt" ]; then
