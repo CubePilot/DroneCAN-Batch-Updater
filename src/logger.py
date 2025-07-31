@@ -2,7 +2,6 @@
 
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -55,7 +54,7 @@ class DroneCANLogger:
         )
         
     def _create_logger(self, name: str, filename: str) -> logging.Logger:
-        """Create a logger with file and console output"""
+        """Create a logger with file output only"""
         logger = logging.getLogger(name)
         logger.setLevel(logging.DEBUG)
         
@@ -63,13 +62,9 @@ class DroneCANLogger:
         if logger.handlers:
             return logger
             
-        # File handler
+        # File handler only - no console output
         file_handler = logging.FileHandler(self.log_dir / filename, encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
-        
-        # Console handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
         
         # Formatter
         formatter = logging.Formatter(
@@ -78,10 +73,7 @@ class DroneCANLogger:
         )
         
         file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-        
         logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
         
         return logger
         
