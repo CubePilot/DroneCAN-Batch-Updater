@@ -32,7 +32,7 @@ mkdir -p dist/nuitka
 # Build with Nuitka
 echo "🔨 Building executable..."
 python -m nuitka \
-    --onefile \
+    --standalone \
     --output-filename=dronecan-batch-updater \
     --output-dir=dist/nuitka \
     --enable-plugin=multiprocessing \
@@ -42,6 +42,6 @@ python -m nuitka \
 
 echo ""
 echo "✅ Build completed successfully!"
-echo "📦 Executable created at: dist/nuitka/dronecan-batch-updater"
+echo "📦 Standalone application created at: dist/nuitka/dronecan-batch-updater.dist/"
 echo ""
-echo "🧪 To test, run: ./dist/nuitka/dronecan-batch-updater --help"
+echo "🧪 To test, run: ./dist/nuitka/dronecan-batch-updater.dist/dronecan-batch-updater --help"

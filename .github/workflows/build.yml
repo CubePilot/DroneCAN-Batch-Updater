@@ -75,9 +75,9 @@ jobs:
       run: |
         cd dist/nuitka
         if [[ "${{ matrix.os }}" == "windows" ]]; then
-          timeout 5 ./dronecan-batch-updater.exe --help || echo "Help command successful"
+          timeout 5 ./dronecan-batch-updater.dist/dronecan-batch-updater.exe --help || echo "Help command successful"
         else
-          timeout 5 ./dronecan-batch-updater --help || echo "Help command successful"
+          timeout 5 ./dronecan-batch-updater.dist/dronecan-batch-updater --help || echo "Help command successful"
         fi
 
     - name: Prepare artifact
@@ -87,8 +87,13 @@ jobs:
         # Create a directory with the artifact name
         mkdir -p ../../artifacts/${{ matrix.artifact-name }}
         
-        # Copy executable
-        cp ${{ matrix.executable-name }} ../../artifacts/${{ matrix.artifact-name }}/
+        # Copy the entire standalone application directory
+        # In standalone mode, Nuitka creates a directory named after the executable
+        if [[ "${{ matrix.os }}" == "windows" ]]; then
+          cp -r dronecan-batch-updater.dist/* ../../artifacts/${{ matrix.artifact-name }}/
+        else
+          cp -r dronecan-batch-updater.dist/* ../../artifacts/${{ matrix.artifact-name }}/
+        fi
         
         # Copy firmware directory
         cp -r ../../firmware ../../artifacts/${{ matrix.artifact-name }}/
