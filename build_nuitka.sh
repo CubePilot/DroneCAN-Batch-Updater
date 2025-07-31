@@ -33,6 +33,7 @@ mkdir -p dist/nuitka
 echo "🔨 Building executable..."
 python -m nuitka \
     --standalone \
+    --assume-yes-for-downloads \
     --output-filename=dronecan-batch-updater \
     --output-dir=dist/nuitka \
     --enable-plugin=multiprocessing \
