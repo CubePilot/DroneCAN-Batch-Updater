@@ -52,15 +52,29 @@ fi
 # Build with Nuitka
 echo "🔨 Building executable..."
 echo "📁 Using DSDL specs from: $DSDL_SPECS_DIR"
-python -m nuitka \
-    --standalone \
-    --assume-yes-for-downloads \
-    --output-filename=dronecan-batch-updater \
-    --output-dir=dist/nuitka \
-    --enable-plugin=multiprocessing \
-    --include-data-dir=firmware=firmware \
-    --include-data-dir="$DSDL_SPECS_DIR=dronecan/dsdl_specs" \
-    src/main.py
+
+# Platform-specific Nuitka options
+NUITKA_ARGS=(
+    --standalone
+    --assume-yes-for-downloads
+    --output-filename=dronecan-batch-updater
+    --output-dir=dist/nuitka
+    --enable-plugin=multiprocessing
+    --include-data-dir=firmware=firmware
+    --include-data-dir="$DSDL_SPECS_DIR=dronecan/dsdl_specs"
+)
+
+# Add Linux-specific options for better compatibility
+if [[ "$RUNNER_OS" == "Linux" ]] || [[ "$OSTYPE" == "linux-gnu" ]]; then
+    NUITKA_ARGS+=(
+        --include-module=zlib
+        --include-module=_ssl
+        --include-module=_hashlib
+        --follow-stdlib
+    )
+fi
+
+python -m nuitka "${NUITKA_ARGS[@]}" src/main.py
 
 echo ""
 echo "✅ Build completed successfully!"
