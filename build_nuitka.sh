@@ -39,8 +39,19 @@ fi
 # Create output directory
 mkdir -p dist/nuitka
 
+# Find Python version and set DSDL specs path
+PYTHON_VERSION=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+
+# Set DSDL specs directory based on platform
+if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+    DSDL_SPECS_DIR="venv/Lib/site-packages/dronecan/dsdl_specs"
+else
+    DSDL_SPECS_DIR="venv/lib/python${PYTHON_VERSION}/site-packages/dronecan/dsdl_specs"
+fi
+
 # Build with Nuitka
 echo "🔨 Building executable..."
+echo "📁 Using DSDL specs from: $DSDL_SPECS_DIR"
 python -m nuitka \
     --standalone \
     --assume-yes-for-downloads \
@@ -48,7 +59,7 @@ python -m nuitka \
     --output-dir=dist/nuitka \
     --enable-plugin=multiprocessing \
     --include-data-dir=firmware=firmware \
-    --include-data-dir=venv/lib/python3.10/site-packages/dronecan/dsdl_specs=dronecan/dsdl_specs \
+    --include-data-dir="$DSDL_SPECS_DIR=dronecan/dsdl_specs" \
     src/main.py
 
 echo ""
