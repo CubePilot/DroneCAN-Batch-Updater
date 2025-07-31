@@ -30,14 +30,14 @@ jobs:
           # Linux build
           - os: linux
             arch: x64
-            runner: ubuntu-20.04
+            runner: ubuntu-22.04
             python-version: '3.10'
             artifact-name: dronecan-batch-updater-linux-x64
             executable-name: dronecan-batch-updater
           # Windows build
           - os: windows
             arch: x64
-            runner: windows-2019
+            runner: windows-2022
             python-version: '3.10'
             artifact-name: dronecan-batch-updater-windows-x64
             executable-name: dronecan-batch-updater.exe
@@ -47,20 +47,11 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Cache Python dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/pip
-          ~/Library/Caches/pip
-          ~\AppData\Local\pip\Cache
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        cache: 'pip'
+        cache-dependency-path: requirements.txt
 
     - name: Install dependencies
       run: |
@@ -117,7 +108,7 @@ jobs:
         fi
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact-name }}
         path: artifacts/${{ matrix.artifact-name }}
@@ -134,20 +125,27 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
+        pattern: dronecan-batch-updater-*
+        merge-multiple: true
 
     - name: Create release archives
       run: |
         cd artifacts
-        for dir in */; do
-          if [[ "$dir" == *"windows"* ]]; then
-            # Create ZIP for Windows
-            zip -r "${dir%/}.zip" "$dir"
-          else
-            # Create tar.gz for Unix systems
-            tar -czf "${dir%/}.tar.gz" "$dir"
+        ls -la
+        # artifacts/download-artifact@v4 creates a flatter structure
+        # Each artifact is now directly in the artifacts directory
+        for artifact_dir in dronecan-batch-updater-*; do
+          if [[ -d "$artifact_dir" ]]; then
+            if [[ "$artifact_dir" == *"windows"* ]]; then
+              # Create ZIP for Windows
+              zip -r "${artifact_dir}.zip" "$artifact_dir"
+            else
+              # Create tar.gz for Unix systems
+              tar -czf "${artifact_dir}.tar.gz" "$artifact_dir"
+            fi
           fi
         done
         ls -la *.{zip,tar.gz} || true
@@ -194,7 +192,7 @@ jobs:
         EOF
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         name: DroneCAN Batch Updater v${{ steps.extract_notes.outputs.version }}
         body_path: release_notes.md
@@ -203,8 +201,6 @@ jobs:
           artifacts/*.tar.gz
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test-builds:
     name: Test Builds
@@ -214,7 +210,7 @@ jobs:
     
     steps:
     - name: Download Linux artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: dronecan-batch-updater-linux-x64
         path: test-build
