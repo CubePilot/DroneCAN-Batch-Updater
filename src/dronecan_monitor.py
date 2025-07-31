@@ -50,8 +50,15 @@ class DroneCaNMonitor:
             possible_ports.extend(glob.glob("/dev/tty.usbmodem*03"))
             # Only use tty. devices, not cu. devices
         elif sys.platform.startswith("win"):
-            for i in range(1, 256):
-                possible_ports.append(f"COM{i}")
+            # Only scan active COM ports instead of all possible COM1-COM255
+            try:
+                import serial.tools.list_ports
+                active_ports = [port.device for port in serial.tools.list_ports.comports()]
+                possible_ports.extend(active_ports)
+            except ImportError:
+                # Fallback to scanning range if serial.tools.list_ports not available
+                for i in range(1, 256):
+                    possible_ports.append(f"COM{i}")
 
         # Filter to only existing ports
         available_ports = []
