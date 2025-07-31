@@ -22,6 +22,7 @@ class RemoteDroneCANNode:
         self.firmware_path: Optional[str] = None
         self.needs_update: bool = False
         self.last_seen: float = 0.0
+        self.bootloader_state: str = "pending"  # "pending", "updated", "unchanged", "timeout", "error"
 
     def __str__(self) -> str:
         if self.interface and self.bus_number is not None:
@@ -69,7 +70,7 @@ class DroneCANNode:
         self.dynamic_node_allocator = None
 
         # Connection string
-        self.mavlink_connection = f"mavcan:{self.port}"
+        self.mavlink_connection = f"slcan:{self.port}"
 
         # NodeManager functionality
         self.progress_ui = progress_ui
@@ -99,7 +100,7 @@ class DroneCANNode:
             # Set up dynamic node allocator (skip NodeMonitor to avoid library bugs)
             try:
                 self.dynamic_node_allocator = dronecan.app.dynamic_node_id.CentralizedServer(
-                    self.node, None
+                    self.node, self
                 )
             except Exception as e:
                 print(
@@ -258,9 +259,9 @@ class DroneCANNode:
         thread.start()
 
     def _cleanup_stale_nodes(self):
-        """Remove nodes that haven't been seen for 20+ seconds"""
+        """Remove nodes that haven't been seen for 5+ seconds"""
         current_time = time.time()
-        stale_threshold = 20.0  # 20 seconds
+        stale_threshold = 5.0  # 5 seconds
 
         with self.lock:
             stale_nodes = []
@@ -285,9 +286,8 @@ class DroneCANNode:
                 # Remove from discovered nodes
                 del self.discovered_nodes[node_id]
 
-
-                # Keep the node in processed_nodes to prevent immediate re-processing
-                # It will be cleared when the program restarts
+                # Remove from processed_nodes to allow re-processing if node comes back
+                self.processed_nodes.discard(node_id)
 
     def _handle_node_info_response(self, event):
         """Handle GetNodeInfo response from node.request() callback"""
@@ -385,8 +385,11 @@ class DroneCANNode:
                     vcs_commit = node_info.software_version.vcs_commit
                     if vcs_commit != 0:  # 0 means unknown/unavailable
                         version_str += f".{vcs_commit:x}"  # Convert to hex format
-                    
-                    remote_node.software_version = version_str
+
+                    if node_info.status.mode == node_info.status.MODE_OPERATIONAL:
+                        remote_node.software_version = version_str
+                    else:
+                        remote_node.software_version = None
                     remote_node.hardware_version = f"{node_info.hardware_version.major}.{node_info.hardware_version.minor}"
                     remote_node.unique_id = bytes(node_info.hardware_version.unique_id)
                     remote_node.last_seen = time.time()
@@ -503,6 +506,35 @@ class DroneCANNode:
             pass
 
         return None
+
+    # Node monitor compatibility methods for CentralizedServer
+    def add_update_handler(self, handler):
+        """Add handler for node monitor updates - minimal implementation"""
+        # Return a simple object with remove method
+        class EventHandle:
+            def remove(self):
+                pass
+        return EventHandle()
+
+    def find_all(self, predicate):
+        """Find all nodes matching predicate - returns list of entries with node_id and info"""
+        entries = []
+        with self.lock:
+            for node_id, remote_node in self.discovered_nodes.items():
+                # Create a simple entry object
+                class Entry:
+                    def __init__(self, node_id):
+                        self.node_id = node_id
+                        self.info = None  # We don't store full node info
+                
+                entry = Entry(node_id)
+                if predicate(entry):
+                    entries.append(entry)
+        return entries
+
+    def are_all_nodes_discovered(self):
+        """Check if all nodes are discovered - always return True for our implementation"""
+        return True
 
     def get_nodes_needing_update(self) -> Dict[int, RemoteDroneCANNode]:
         """Get all nodes that need firmware updates"""
