@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # Import the existing uploader module
-from uploader import firmware, ports_to_try, uploader
+from uploader import firmware, ports_to_try, uploader, find_bootloader
 from logger import get_logger
 
 
@@ -125,7 +125,7 @@ class CubeUpdater:
             )
 
             # Try to find and identify the bootloader
-            if self._find_bootloader(up, port):
+            if find_bootloader(up, port):
                 board_name = up.board_name_for_board_id(up.board_type) or f"Unknown_{up.board_type}"
 
                 device = CubeDevice(
@@ -146,40 +146,6 @@ class CubeUpdater:
 
         return None
 
-    def _find_bootloader(self, up, port: str) -> bool:
-        """Try to find bootloader on the given port with retries for USB port changes"""
-        max_attempts = 10  # Increase attempts for USB port changes
-
-        for attempt in range(max_attempts):
-            try:
-                up.open()
-                # Try to identify the bootloader
-                up.identify()
-                return True
-
-            except Exception as e:
-                # DEBUG_PRINT: Attempt failed
-                self._log_output(
-                    f"[DEBUG] Bootloader attempt {attempt + 1}/{max_attempts} " f"on {port}: {e}"
-                )
-
-                # Try to send reboot command on first few attempts
-                if attempt < 3:
-                    try:
-                        reboot_sent = up.send_reboot()
-                        if reboot_sent:
-                            self._log_output(
-                                f"[DEBUG] Reboot sent to {port}, " f"waiting for USB port change..."
-                            )
-                    except Exception:
-                        pass
-
-                up.close()
-
-                # Wait 2 seconds for USB port changes as requested
-                time.sleep(2.0)
-
-        return False
 
     def check_firmware_versions(self, devices: List[CubeDevice]) -> List[CubeDevice]:
         """Check which devices need firmware updates"""
@@ -372,7 +338,7 @@ class CubeUpdater:
 
             # Find bootloader
             self._log_output(f"[VERBOSE] {device.port}: Searching for bootloader...")
-            if not self._find_bootloader(up, device.port):
+            if not find_bootloader(up, device.port):
                 self._log_output(f"[VERBOSE] {device.port}: Bootloader not found")
                 self.progress_ui.update_cube_progress(
                     device_id, "failed", 0, "Bootloader not found"
