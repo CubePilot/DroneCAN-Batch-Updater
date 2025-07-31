@@ -37,7 +37,6 @@ python -m nuitka \
     --output-dir=dist/nuitka \
     --enable-plugin=multiprocessing \
     --include-data-dir=firmware=firmware \
-    --include-data-dir=firmware/com.cubepilot.here4=firmware/com.cubepilot.here4 \
     --include-data-dir=venv/lib/python3.10/site-packages/dronecan/dsdl_specs=dronecan/dsdl_specs \
     src/main.py
 

@@ -490,18 +490,10 @@ class DroneCANNode:
     def _find_firmware_path(self, device_name: str) -> Optional[str]:
         """Find firmware file path for the given device name"""
         try:
-            device_dir = self.firmware_dir / device_name
-            
-            # First try versioned firmware files (firmware_<version>.bin)
-            if device_dir.exists():
-                for firmware_file in device_dir.glob("firmware_*.bin"):
-                    if firmware_file.is_file():
-                        return str(firmware_file)
-            
             # Fallback to legacy firmware.bin format
-            firmware_file = device_dir / "firmware.bin"
-            if firmware_file.exists():
-                return str(firmware_file)
+            for firmware_file in self.firmware_dir.glob(f"{device_name}_firmware_*.bin"):
+                if firmware_file:
+                    return str(firmware_file)
 
         except Exception:
             pass
