@@ -10,15 +10,21 @@ echo "🚀 Building DroneCAN Batch Updater with Nuitka..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Check if virtual environment exists
+# Check if virtual environment exists and create it if needed
 if [ ! -d "venv" ]; then
-    echo "❌ Error: Virtual environment not found. Please create it first."
-    exit 1
+    echo "📦 Creating virtual environment..."
+    python3 -m venv venv
 fi
 
 # Activate virtual environment
 echo "📦 Activating virtual environment..."
 source venv/bin/activate
+
+# Install dependencies from requirements.txt
+if [ -f "requirements.txt" ]; then
+    echo "📥 Installing dependencies from requirements.txt..."
+    pip install -r requirements.txt
+fi
 
 # Check if Nuitka is installed
 if ! python -c "import nuitka" 2>/dev/null; then
