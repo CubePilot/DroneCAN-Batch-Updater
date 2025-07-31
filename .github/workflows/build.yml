@@ -53,6 +53,21 @@ jobs:
         cache: 'pip'
         cache-dependency-path: requirements.txt
 
+    - name: Cache Nuitka compilation cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/Nuitka
+          ~/.local/share/Nuitka/Cache
+          ~/AppData/Local/Nuitka/Nuitka/Cache
+          ~/.cache/ccache
+          ~/Library/Caches/ccache
+          ~/AppData/Local/ccache
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('src/**/*.py', 'requirements.txt', 'firmware/**') }}
+        restore-keys: |
+          nuitka-${{ matrix.os }}-${{ matrix.arch }}-
+          nuitka-${{ matrix.os }}-
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
