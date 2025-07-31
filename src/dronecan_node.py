@@ -287,7 +287,7 @@ class DroneCANNode:
                 del self.discovered_nodes[node_id]
 
                 # Remove from processed_nodes to allow re-processing if node comes back
-                self.processed_nodes.discard(node_id)
+                del self.processed_nodes[node_id]
 
     def _handle_node_info_response(self, event):
         """Handle GetNodeInfo response from node.request() callback"""
@@ -324,7 +324,20 @@ class DroneCANNode:
                         existing_node = remote_node
                         old_node_id = existing_id
                         break
-                
+                if node_id in self.discovered_nodes.keys():
+                    # Set software version
+                    version_str = f"{node_info.software_version.major}.{node_info.software_version.minor}"
+                    
+                    # Include VCS commit hash if available
+                    vcs_commit = node_info.software_version.vcs_commit
+                    if vcs_commit != 0:  # 0 means unknown/unavailable
+                        version_str += f".{vcs_commit:x}"  # Convert to hex format
+
+                    if node_info.status.mode == node_info.status.MODE_OPERATIONAL:
+                        self.discovered_nodes[node_id].software_version = version_str
+                    else:
+                        self.discovered_nodes[node_id].software_version = None
+
                 if existing_node:
                     if old_node_id != node_id:
                         self._log_to_console(f"{str(existing_node)} node_id changed from {old_node_id} to {node_id}")
@@ -378,18 +391,6 @@ class DroneCANNode:
                     # Log identification now that we have the RemoteDroneCANNode object
                     self._log_to_console(f"{str(remote_node)} identified as {device_name}")
 
-                    # Set device information
-                    version_str = f"{node_info.software_version.major}.{node_info.software_version.minor}"
-                    
-                    # Include VCS commit hash if available
-                    vcs_commit = node_info.software_version.vcs_commit
-                    if vcs_commit != 0:  # 0 means unknown/unavailable
-                        version_str += f".{vcs_commit:x}"  # Convert to hex format
-
-                    if node_info.status.mode == node_info.status.MODE_OPERATIONAL:
-                        remote_node.software_version = version_str
-                    else:
-                        remote_node.software_version = None
                     remote_node.hardware_version = f"{node_info.hardware_version.major}.{node_info.hardware_version.minor}"
                     remote_node.unique_id = bytes(node_info.hardware_version.unique_id)
                     remote_node.last_seen = time.time()
