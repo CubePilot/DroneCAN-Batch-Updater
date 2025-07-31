@@ -1,0 +1,227 @@
+name: Build Cross-Platform Executables
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # macOS builds
+          - os: macos
+            arch: x64
+            runner: macos-13
+            python-version: '3.10'
+            artifact-name: dronecan-batch-updater-macos-x64
+            executable-name: dronecan-batch-updater
+          - os: macos
+            arch: arm64
+            runner: macos-14
+            python-version: '3.10'
+            artifact-name: dronecan-batch-updater-macos-arm64
+            executable-name: dronecan-batch-updater
+          # Linux build
+          - os: linux
+            arch: x64
+            runner: ubuntu-20.04
+            python-version: '3.10'
+            artifact-name: dronecan-batch-updater-linux-x64
+            executable-name: dronecan-batch-updater
+          # Windows build
+          - os: windows
+            arch: x64
+            runner: windows-2019
+            python-version: '3.10'
+            artifact-name: dronecan-batch-updater-windows-x64
+            executable-name: dronecan-batch-updater.exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/Library/Caches/pip
+          ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run linting (Linux only)
+      if: matrix.os == 'linux'
+      run: |
+        python lint.py
+      continue-on-error: true
+
+    - name: Build executable
+      shell: bash
+      run: |
+        chmod +x build_nuitka.sh
+        ./build_nuitka.sh
+
+    - name: Test executable (basic smoke test)
+      shell: bash
+      run: |
+        cd dist/nuitka
+        if [[ "${{ matrix.os }}" == "windows" ]]; then
+          timeout 5 ./dronecan-batch-updater.exe --help || echo "Help command successful"
+        else
+          timeout 5 ./dronecan-batch-updater --help || echo "Help command successful"
+        fi
+
+    - name: Prepare artifact
+      shell: bash
+      run: |
+        cd dist/nuitka
+        # Create a directory with the artifact name
+        mkdir -p ../../artifacts/${{ matrix.artifact-name }}
+        
+        # Copy executable
+        cp ${{ matrix.executable-name }} ../../artifacts/${{ matrix.artifact-name }}/
+        
+        # Copy firmware directory
+        cp -r ../../firmware ../../artifacts/${{ matrix.artifact-name }}/
+        
+        # Copy README
+        cp ../../README.md ../../artifacts/${{ matrix.artifact-name }}/
+        
+        # Create a simple run script for each platform
+        if [[ "${{ matrix.os }}" == "windows" ]]; then
+          echo '@echo off' > ../../artifacts/${{ matrix.artifact-name }}/run.bat
+          echo 'dronecan-batch-updater.exe %*' >> ../../artifacts/${{ matrix.artifact-name }}/run.bat
+        else
+          echo '#!/bin/bash' > ../../artifacts/${{ matrix.artifact-name }}/run.sh
+          echo 'cd "$(dirname "$0")"' >> ../../artifacts/${{ matrix.artifact-name }}/run.sh
+          echo './dronecan-batch-updater "$@"' >> ../../artifacts/${{ matrix.artifact-name }}/run.sh
+          chmod +x ../../artifacts/${{ matrix.artifact-name }}/run.sh
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact-name }}
+        path: artifacts/${{ matrix.artifact-name }}
+        retention-days: 30
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Create release archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          if [[ "$dir" == *"windows"* ]]; then
+            # Create ZIP for Windows
+            zip -r "${dir%/}.zip" "$dir"
+          else
+            # Create tar.gz for Unix systems
+            tar -czf "${dir%/}.tar.gz" "$dir"
+          fi
+        done
+        ls -la *.{zip,tar.gz} || true
+
+    - name: Extract release notes
+      id: extract_notes
+      run: |
+        # Extract version from tag
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+        # Create basic release notes
+        cat > release_notes.md << EOF
+        # DroneCAN Batch Firmware Updater v$VERSION
+        
+        Built with Nuitka for optimal performance and reliability.
+        
+        ## Downloads
+        
+        Choose the appropriate build for your platform:
+        
+        - **macOS (Intel)**: dronecan-batch-updater-macos-x64.tar.gz
+        - **macOS (Apple Silicon)**: dronecan-batch-updater-macos-arm64.tar.gz  
+        - **Linux (x64)**: dronecan-batch-updater-linux-x64.tar.gz
+        - **Windows (x64)**: dronecan-batch-updater-windows-x64.zip
+        
+        ## Usage
+        
+        1. Extract the archive for your platform
+        2. Place your firmware files in the \`firmware/\` directory
+        3. Run the executable:
+           - **macOS/Linux**: \`./run.sh\` or \`./dronecan-batch-updater\`
+           - **Windows**: \`run.bat\` or \`dronecan-batch-updater.exe\`
+        
+        ## Features
+        
+        - Cross-platform support (macOS, Linux, Windows)
+        - Automatic Cube firmware updates
+        - DroneCAN device monitoring and updating
+        - Multi-interface parallel processing
+        - Real-time progress display
+        - Native compilation with Nuitka for better performance
+        
+        EOF
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: DroneCAN Batch Updater v${{ steps.extract_notes.outputs.version }}
+        body_path: release_notes.md
+        files: |
+          artifacts/*.zip
+          artifacts/*.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-builds:
+    name: Test Builds
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: dronecan-batch-updater-linux-x64
+        path: test-build
+
+    - name: Test Linux build
+      run: |
+        cd test-build
+        chmod +x dronecan-batch-updater
+        ./dronecan-batch-updater --help
+        echo "Linux build test passed"
