@@ -13,10 +13,18 @@ import dronecan
 from dronecan_node import DroneCANNode, RemoteDroneCANNode
 
 
+
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and Nuitka onefile"""
+    import os
+    base_path = Path(__file__).parent
+    print(f"Getting resource path for: {relative_path} at base path: {base_path}")
+    return Path(base_path) / relative_path
+
 class DroneCaNMonitor:
     def __init__(self, progress_ui):
         self.progress_ui = progress_ui
-        self.firmware_dir = Path(__file__).parent.parent / "firmware"
+        self.firmware_dir = get_resource_path("firmware")
         self.node: Optional[dronecan.node.Node] = None
         self.node_manager: Optional[DroneCANNode] = None
         self.node_managers = []  # List of DroneCANNode instances for parallel processing

@@ -1,8 +1,7 @@
 dronecan>=1.0.0
-pymavlink>=2.4.0
 pyserial>=3.5
 rich>=13.0.0
-pyinstaller>=5.0.0
+nuitka>=2.7.0
 colorama>=0.4.0
 click>=8.0.0
 

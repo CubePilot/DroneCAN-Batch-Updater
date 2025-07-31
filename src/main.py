@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import multiprocessing
 import os
 import sys
 import threading
@@ -13,6 +14,15 @@ from rich.text import Text
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and Nuitka onefile"""
+    import os
+    base_path = Path(__file__).parent
+    print(f"Getting resource path for: {relative_path} at base path: {base_path}")
+    return Path(base_path) / relative_path
+
 
 # pylint: disable=wrong-import-position
 from cube_updater import CubeUpdater
@@ -32,7 +42,7 @@ class BatchFirmwareUpdater:
         self.skip_cube_update = skip_firmware
 
         # Paths
-        self.firmware_dir = Path(__file__).parent.parent / "firmware"
+        self.firmware_dir = get_resource_path("firmware")
 
     def print_banner(self):
         banner = Text("DroneCAN Batch Firmware Updater", style="bold blue")
@@ -158,4 +168,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # This is required for PyInstaller when using multiprocessing
+    multiprocessing.freeze_support()
     sys.exit(main())

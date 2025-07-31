@@ -11,6 +11,14 @@ from typing import List, Optional
 from uploader import firmware, ports_to_try, uploader
 
 
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and Nuitka onefile"""
+    import os
+    base_path = Path(__file__).parent
+    print(f"Getting resource path for: {relative_path} at base path: {base_path}")
+    return Path(base_path) / relative_path
+
+
 @dataclass
 class CubeDevice:
     port: str
@@ -25,7 +33,7 @@ class CubeDevice:
 class CubeUpdater:
     def __init__(self, progress_ui):
         self.progress_ui = progress_ui
-        self.firmware_dir = Path(__file__).parent.parent / "firmware"
+        self.firmware_dir = get_resource_path("firmware")
         self.detected_devices: List[CubeDevice] = []
 
     def _log_output(self, message: str):
@@ -91,6 +99,10 @@ class CubeUpdater:
     def _identify_device(self, port: str) -> Optional[CubeDevice]:
         """Try to identify a device on the given port"""
         try:
+            # Create log callback for device identification
+            def log_callback(message):
+                self._log_output(f"[UPLOADER] {port}: {message}")
+
             # Create uploader instance with minimal configuration
             up = uploader(
                 portname=port,
@@ -103,6 +115,7 @@ class CubeUpdater:
                 source_component=1,
                 no_extf=False,
                 force_erase=False,
+                log_callback=log_callback,
             )
 
             # Try to find and identify the bootloader
@@ -314,7 +327,27 @@ class CubeUpdater:
             fw = firmware(device.firmware_file)
             self._log_output(f"[VERBOSE] {device.port}: Firmware loaded successfully")
 
-            # Create uploader instance
+            # Create progress callback function
+            def progress_callback(phase, progress_percent):
+                if phase == "erase":
+                    # Scale erase progress to 0-20% range  
+                    scaled_progress = min(progress_percent * 0.2, 20)
+                    self.progress_ui.update_cube_progress(device_id, "erasing", scaled_progress)
+                    self._log_output(f"[UPLOADER] {device.port}: Erasing: {progress_percent:.1f}%")
+                elif phase == "program":
+                    # Scale program progress to 20-90% range
+                    scaled_progress = min(20 + (progress_percent * 0.7), 90)
+                    self.progress_ui.update_cube_progress(device_id, "uploading", scaled_progress)
+                    self._log_output(f"[UPLOADER] {device.port}: Programming: {progress_percent:.1f}%")
+                elif phase == "verify":
+                    self.progress_ui.update_cube_progress(device_id, "verifying", 95)
+                    self._log_output(f"[UPLOADER] {device.port}: Verifying: {progress_percent:.1f}%")
+
+            # Create log callback function
+            def log_callback(message):
+                self._log_output(f"[UPLOADER] {device.port}: {message}")
+
+            # Create uploader instance with progress and log callbacks
             self._log_output(f"[VERBOSE] {device.port}: Creating uploader connection...")
             up = uploader(
                 portname=device.port,
@@ -327,6 +360,8 @@ class CubeUpdater:
                 source_component=1,
                 no_extf=False,
                 force_erase=False,
+                progress_callback=progress_callback,
+                log_callback=log_callback,
             )
 
             # Find bootloader
@@ -358,138 +393,22 @@ class CubeUpdater:
             return False
 
     def _upload_with_progress(self, up, fw, device_id: str, device: "CubeDevice"):
-        """Upload firmware with progress tracking using subprocess to
-        isolate uploader output"""
-        import os
-        import re
-        import subprocess
-        import tempfile
-
+        """Upload firmware with real-time progress tracking via callback"""
+        
         device_port = device_id.replace("cube_", "").replace("_", "/")
-
         self._log_output(f"[VERBOSE] {device_port}: Starting firmware upload process...")
 
-        # Create a temporary script to run the uploader in isolation
-        script_content = f"""#!/usr/bin/env python3
-import sys
-import os
-
-# Add the src directory to the path
-sys.path.insert(0, "{os.path.dirname(os.path.abspath(__file__))}")
-
-from uploader import uploader, firmware
-
-try:
-    # Load firmware
-    fw = firmware("{device.firmware_file}")
-
-    # Create uploader
-    up = uploader(
-        portname="{device.port}",
-        baudrate_bootloader=115200,
-        baudrate_flightstack=[57600],
-        baudrate_bootloader_flash=None,
-        target_system=None,
-        target_component=None,
-        source_system=255,
-        source_component=1,
-        no_extf=False,
-        force_erase=False
-    )
-
-    # Open and identify
-    up.open()
-    up.identify()
-
-    # Upload firmware
-    up.upload(fw, force=False, boot_delay=None)
-
-    # Close connection
-    up.close()
-
-    print("UPLOAD_SUCCESS")
-except Exception as e:
-    print("UPLOAD_ERROR: " + str(e))
-    sys.exit(1)
-"""
-
         try:
-            # Write the script to a temporary file
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-                f.write(script_content)
-                script_path = f.name
-
-            # Run the script and monitor output
-            process = subprocess.Popen(
-                [sys.executable, script_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1,
-            )
-
-            upload_success = False
-
-            # Monitor output line by line
-            for line in iter(process.stdout.readline, ""):
-                if not line:
-                    break
-
-                line = line.strip()
-                if line:
-                    self._log_output(f"[UPLOADER] {device_port}: {line}")
-
-                    # Parse progress information
-                    if "UPLOAD_SUCCESS" in line:
-                        upload_success = True
-                    elif "UPLOAD_ERROR:" in line:
-                        error_msg = line.replace("UPLOAD_ERROR:", "").strip()
-                        raise Exception(f"Upload failed: {error_msg}")
-                    elif "Erase" in line and ":" in line:
-                        # Extract progress from "Erase  : [====                ] 22.3%" format
-                        progress_match = re.search(r"(\d+\.?\d*)", line)
-                        if progress_match:
-                            try:
-                                progress_val = float(progress_match.group(1))
-                                # Scale erase progress to 0-20% range
-                                scaled_progress = min(progress_val * 0.2, 20)
-                                self.progress_ui.update_cube_progress(
-                                    device_id, "erasing", scaled_progress
-                                )
-                            except Exception:
-                                self.progress_ui.update_cube_progress(device_id, "erasing", 15)
-                        else:
-                            self.progress_ui.update_cube_progress(device_id, "erasing", 15)
-                    elif "Program:" in line:
-                        # Extract progress from "Program: [=================== ] 96.1" format
-                        progress_match = re.search(r"(\d+\.?\d*)", line)
-                        if progress_match:
-                            try:
-                                progress_val = float(progress_match.group(1))
-                                scaled_progress = min(20 + (progress_val * 0.7), 90)
-                                self.progress_ui.update_cube_progress(
-                                    device_id, "uploading", scaled_progress
-                                )
-                            except Exception:
-                                pass
-                    elif "Verify" in line and ":" in line:
-                        self.progress_ui.update_cube_progress(device_id, "verifying", 95)
-
-            # Wait for process to complete
-            process.wait()
-
-            if process.returncode != 0 and not upload_success:
-                raise Exception(f"Upload process failed with return code {process.returncode}")
-
-            if not upload_success:
-                raise Exception("Upload completed but success confirmation not received")
-
-            self._log_output(f"[VERBOSE] {device_port}: Upload completed successfully")
+            # The uploader now has a progress_callback that will handle UI updates automatically
+            self._log_output(f"[UPLOADER] {device_port}: Starting firmware upload...")
+            
+            # Perform the upload - progress updates will be handled by the callback
+            up.upload(fw, force=False, boot_delay=None)
+            
+            # Final completion update
             self.progress_ui.update_cube_progress(device_id, "complete", 100)
+            self._log_output(f"[UPLOADER] {device_port}: Upload completed successfully")
 
-        finally:
-            # Clean up temporary script
-            try:
-                os.unlink(script_path)
-            except Exception:
-                pass
+        except Exception as e:
+            self._log_output(f"[UPLOADER] {device_port}: Upload failed: {str(e)}")
+            raise
