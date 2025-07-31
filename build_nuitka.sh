@@ -42,6 +42,6 @@ python -m nuitka \
 
 echo ""
 echo "✅ Build completed successfully!"
-echo "📦 Standalone application created at: dist/nuitka/dronecan-batch-updater.dist/"
+echo "📦 Standalone application created at: dist/nuitka/main.dist/"
 echo ""
-echo "🧪 To test, run: ./dist/nuitka/dronecan-batch-updater.dist/dronecan-batch-updater --help"
+echo "🧪 To test, run: ./dist/nuitka/main.dist/dronecan-batch-updater --help"
