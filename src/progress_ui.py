@@ -16,7 +16,7 @@ class DeviceStatus:
     name: str
     port: str
     device_type: str
-    status: str  # 'queued', 'connecting', 'erasing', 'uploading', 'verifying', 'complete', 'failed'
+    status: str  # 'queued', 'connecting', 'erasing', 'uploading', 'verifying', 'bootloader', 'restarting', 'complete', 'failed'
     progress: float = 0.0
     error_msg: Optional[str] = None
     interface: Optional[str] = None  # For DroneCAN devices, track which interface they're on
