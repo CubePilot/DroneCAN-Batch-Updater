@@ -35,9 +35,9 @@ class DroneCaNMonitor:
 
         # Common DroneCAN/CAN interface ports
         if sys.platform.startswith("linux"):
-            possible_ports.extend(glob.glob("/dev/serial/by-id/usb-*if00"))
+            possible_ports.extend(glob.glob("/dev/serial/by-id/usb-*if02"))
         elif sys.platform.startswith("darwin"):  # macOS
-            possible_ports.extend(glob.glob("/dev/tty.usbmodem*01"))
+            possible_ports.extend(glob.glob("/dev/tty.usbmodem*03"))
             # Only use tty. devices, not cu. devices
         elif sys.platform.startswith("win"):
             for i in range(1, 256):
@@ -82,7 +82,7 @@ class DroneCaNMonitor:
 
                 for test_port in available_ports:
                     port_found_devices = False  # Track if we found devices on this port
-                    for bus_number in [1, 2]:  # Test both bus numbers
+                    for bus_number in [2]:  # Test only bus number 2
                         if port_found_devices:  # Skip remaining buses if we already found devices
                             break
                         
@@ -247,8 +247,8 @@ class DroneCaNMonitor:
         self.allocated_node_ids.add(remote_node.node_id)
 
         if remote_node.firmware_path:
-
             # Start firmware update in a separate thread
+            # The firmware update process will handle waiting for operational mode
             update_thread = threading.Thread(
                 target=self._update_node_firmware, args=(manager_node, remote_node), daemon=True
             )
@@ -299,7 +299,7 @@ class DroneCaNMonitor:
         except Exception as e:
             self._log_output(f"Error starting immediate updates for {node.port}: {e}")
 
-    def _wait_for_operational_and_get_version(self, manager_node: DroneCANNode, remote_node: RemoteDroneCANNode, timeout: float = 6.0) -> str:
+    def _wait_for_operational_and_get_version(self, manager_node: DroneCANNode, remote_node: RemoteDroneCANNode, timeout: float = 10.0) -> str:
         """Wait for device to be operational and get its firmware version"""
         try:
             self._log_output(f"{str(remote_node)} waiting for operational mode to check firmware version...")
@@ -318,13 +318,21 @@ class DroneCaNMonitor:
             manager_node.node.add_handler(dronecan.uavcan.protocol.NodeStatus, on_node_status)
             
             # Wait for operational mode and version extraction
+            last_log_time = 0
             while time.time() - start_time < timeout:
+                elapsed = time.time() - start_time
+                
+                # Log every 2 seconds
+                if elapsed - last_log_time >= 2.0:
+                    self._log_output(f"{str(remote_node)} still waiting for operational mode... ({elapsed:.1f}s/{timeout}s)")
+                    last_log_time = elapsed
+                
                 try:
                     manager_node.node.spin(0.1)
                     if current_version:
                         break
                 except Exception:
-                    pass
+                    time.sleep(0.01)  # Small delay on exception
                     
             # Remove handler
             try:
@@ -336,7 +344,8 @@ class DroneCaNMonitor:
                 self._log_output(f"{str(remote_node)} current firmware version: {current_version}")
                 return current_version
             else:
-                self._log_output(f"{str(remote_node)} could not determine current firmware version within {timeout}s")
+                elapsed = time.time() - start_time
+                self._log_output(f"{str(remote_node)} timeout after {elapsed:.1f}s waiting for operational mode, continuing anyway")
                 return ""
                 
         except Exception as e:
@@ -351,6 +360,15 @@ class DroneCaNMonitor:
                 f"{str(remote_node)} starting firmware update"
             )
             self.progress_ui.update_dronecan_progress(str(remote_node), "connecting", 5)
+
+            # Wait for node to enter operational mode before starting firmware update
+            self._log_output(f"{str(remote_node)} waiting for operational mode before starting update...")
+            operational_version = self._wait_for_operational_and_get_version(manager_node, remote_node)
+            
+            if operational_version:
+                self._log_output(f"{str(remote_node)} operational with firmware version: {operational_version}")
+            else:
+                self._log_output(f"{str(remote_node)} timeout waiting for operational mode, proceeding with update anyway")
 
             self._log_output(f"{str(remote_node)} update thread started, preparing firmware update...")
             time.sleep(0.5)  # Give UI time to refresh
@@ -402,8 +420,16 @@ class DroneCaNMonitor:
             if target_version:
                 current_version = self._wait_for_operational_and_get_version(manager_node, remote_node)
                 if current_version == target_version:
-                    self._log_output(f"{str(remote_node)} already has target firmware version {target_version}, skipping update")
-                    return True  # Skip update, consider it successful
+                    self._log_output(f"{str(remote_node)} already has target firmware version {target_version}, skipping firmware update")
+                    # Skip firmware update but still do bootloader update and restart
+                    # Mark as not needing update since it already has correct firmware
+                    remote_node.needs_update = False
+                    self.progress_ui.update_dronecan_progress(str(remote_node), "bootloader", 90, "Bootloader update")
+                    self._start_bootloader_update(manager_node, remote_node)
+                    self.progress_ui.update_dronecan_progress(str(remote_node), "restarting", 95, "Restarting node")
+                    self._restart_node(manager_node, remote_node)
+                    self.progress_ui.update_dronecan_progress(str(remote_node), "complete", 100, "Update complete")
+                    return True
                 else:
                     self._log_output(f"{str(remote_node)} current version: {current_version}, target: {target_version}, proceeding with update")
 
@@ -430,6 +456,67 @@ class DroneCaNMonitor:
             )
             self._log_output(f"File server configured with hash: {file_hash}")
 
+            self.progress_ui.update_dronecan_progress(str(remote_node), "preparing", 15, "Restarting to maintenance mode")
+
+            # Send restart requests every 5s for 30s until MAINTENANCE mode
+            maintenance_reached = False
+            maintenance_wait_start = time.time()
+            maintenance_timeout = 30.0  # 30 second timeout
+            last_restart_time = 0
+            restart_interval = 5.0  # Send restart every 5 seconds
+            
+            def on_maintenance_status(e):
+                nonlocal maintenance_reached
+                if e.transfer.source_node_id == remote_node.node_id:
+                    if e.message.mode == e.message.MODE_MAINTENANCE:
+                        maintenance_reached = True
+                        self._log_output(f"{str(remote_node)} entered maintenance mode")
+            
+            def on_restart_response(e):
+                if e is not None and e.response:
+                    if e.response.ok:
+                        self._log_output(f"{str(remote_node)} restart request acknowledged")
+                    else:
+                        self._log_output(f"{str(remote_node)} restart request failed")
+                else:
+                    self._log_output(f"{str(remote_node)} no response to restart request")
+            
+            # Set up handler for maintenance mode detection
+            maintenance_handler = manager_node.node.add_handler(dronecan.uavcan.protocol.NodeStatus, on_maintenance_status)
+            
+            self._log_output(f"{str(remote_node)} sending restart requests every {restart_interval}s until maintenance mode (timeout: {maintenance_timeout}s)...")
+            
+            while not maintenance_reached and (time.time() - maintenance_wait_start) < maintenance_timeout:
+                current_time = time.time()
+                
+                # Send restart request every 5 seconds
+                if current_time - last_restart_time >= restart_interval:
+                    elapsed = current_time - maintenance_wait_start
+                    self._log_output(f"{str(remote_node)} sending restart request (elapsed: {elapsed:.1f}s)")
+                    
+                    # Send restart request
+                    restart_request = dronecan.uavcan.protocol.RestartNode.Request()
+                    restart_request.magic_number = restart_request.MAGIC_NUMBER
+                    manager_node.node.request(restart_request, remote_node.node_id, on_restart_response, priority=30)
+                    
+                    last_restart_time = current_time
+                
+                try:
+                    manager_node.node.spin(0.1)
+                except:
+                    pass
+            
+            # Remove maintenance handler
+            try:
+                maintenance_handler.remove()
+            except:
+                pass
+            
+            if not maintenance_reached:
+                self._log_output(f"{str(remote_node)} timeout waiting for maintenance mode after {maintenance_timeout}s, proceeding anyway...")
+            else:
+                self._log_output(f"{str(remote_node)} ready for firmware update in maintenance mode")
+            
             self.progress_ui.update_dronecan_progress(str(remote_node), "uploading", 20)
 
             # Track update state
@@ -486,20 +573,37 @@ class DroneCaNMonitor:
                                 f"completed in {elapsed:.1f} seconds"
                             )
                             update_complete = True
-                            last_progress = 100
-                            # Force update to complete status
+                            last_progress = 90
+                            # Update to bootloader phase instead of complete
                             try:
                                 self.progress_ui.update_dronecan_progress(
-                                    str(remote_node), "complete", 100
+                                    str(remote_node), "bootloader", 90, "Bootloader update"
                                 )
+                                remote_node.needs_update = False
                                 self._log_output(
-                                    f"Progress updated to 100% complete for "
-                                    f"device {remote_node}"
+                                    f"Firmware update completed for {remote_node}, starting bootloader update"
                                 )
-                                # Force a display refresh to ensure the completion shows
-                                self.progress_ui._refresh_dronecan_display()
+                                # Force a display refresh to ensure the progress shows
+                                self.progress_ui._refresh_display()
+                                
+                                # Start bootloader update after firmware is complete
+                                self._start_bootloader_update(manager_node, remote_node)
+                                
+                                # Update to restarting phase
+                                self.progress_ui.update_dronecan_progress(
+                                    str(remote_node), "restarting", 95, "Restarting node"
+                                )
+                                
+                                # Restart node after bootloader update is complete (regardless of success)
+                                self._restart_node(manager_node, remote_node)
+                                
+                                # Finally update to complete
+                                self.progress_ui.update_dronecan_progress(
+                                    str(remote_node), "complete", 100, "Update complete"
+                                )
+                                
                             except Exception as e:
-                                self._log_output(f"Error updating progress to complete: {e}")
+                                self._log_output(f"Error during bootloader/restart phase: {e}")
                     elif update_started and not update_complete:
                         # Device exited SOFTWARE_UPDATE mode but not to OPERATIONAL
                         # Might be rebooting
@@ -573,3 +677,141 @@ class DroneCaNMonitor:
         except Exception as e:
             self._log_output(f"{str(remote_node)} error during firmware update: {str(e)}")
             return False
+
+    def _start_bootloader_update(self, manager_node: DroneCANNode, remote_node: RemoteDroneCANNode):
+        """Start bootloader update by setting FLASH_BOOTLOADER parameter with retry logic"""
+        try:
+            self._log_output(f"{str(remote_node)} starting bootloader update...")
+            
+            # Initialize bootloader state
+            remote_node.bootloader_state = "pending"
+            
+            def on_log_message(e):
+                if e.transfer.source_node_id == remote_node.node_id:
+                    try:
+                        # Handle the log message text (it's a uint8 array, not a string)
+                        if hasattr(e.message.text, 'to_bytes'):
+                            # If it has to_bytes method, use it
+                            log_bytes = e.message.text.to_bytes()
+                            log_text = log_bytes.decode('utf-8', errors='ignore')
+                        else:
+                            # If it's already bytes or a list/array of integers
+                            if isinstance(e.message.text, (bytes, bytearray)):
+                                log_text = e.message.text.decode('utf-8', errors='ignore')
+                            else:
+                                # Assume it's an array of integers (uint8 values)
+                                log_bytes = bytes(e.message.text)
+                                log_text = log_bytes.decode('utf-8', errors='ignore')
+                        
+                        self._log_output(f"{str(remote_node)} log: {log_text}")
+                        
+                        # Check for bootloader completion messages
+                        if "Bootloader unchanged" in log_text:
+                            remote_node.bootloader_state = "unchanged"
+                            self._log_output(f"{str(remote_node)} bootloader update completed - bootloader was unchanged")
+                        elif "Bootloader Flash ok" in log_text:
+                            remote_node.bootloader_state = "updated"
+                            self._log_output(f"{str(remote_node)} bootloader update completed - bootloader was successfully updated")
+                            
+                    except Exception as decode_error:
+                        self._log_output(f"{str(remote_node)} error decoding log message: {decode_error}")
+            
+            # Add handler for log messages from this specific node BEFORE setting parameter
+            self._log_output(f"{str(remote_node)} listening for bootloader completion messages...")
+            log_handler = manager_node.node.add_handler(dronecan.uavcan.protocol.debug.LogMessage, on_log_message)
+            
+            def on_param_response(e):
+                # Only for logging purposes
+                if e is not None and e.response:
+                    if e.response.name.decode('utf-8') == "FLASH_BOOTLOADER":
+                        if e.response.value.integer_value == 1:
+                            self._log_output(f"{str(remote_node)} FLASH_BOOTLOADER parameter set successfully")
+                        else:
+                            self._log_output(f"{str(remote_node)} FLASH_BOOTLOADER parameter set to {e.response.value.integer_value}")
+                    else:
+                        self._log_output(f"{str(remote_node)} unexpected parameter response: {e.response.name.decode('utf-8')}")
+                else:
+                    self._log_output(f"{str(remote_node)} no response to FLASH_BOOTLOADER parameter set request")
+            
+            def request_bootloader_update():
+                if remote_node.bootloader_state == "pending":
+                    self._log_output(f"{str(remote_node)} sending FLASH_BOOTLOADER parameter request...")
+                    # Create parameter set request
+                    param_request = dronecan.uavcan.protocol.param.GetSet.Request()
+                    param_request.name = "FLASH_BOOTLOADER".encode('utf-8')
+                    param_request.value.integer_value = 1
+                    
+                    # Send parameter set request
+                    manager_node.node.request(param_request, remote_node.node_id, on_param_response, priority=30)
+            
+            # Start the bootloader update process with periodic requests
+            self._log_output(f"{str(remote_node)} starting FLASH_BOOTLOADER parameter request loop...")
+            request_bootloader_update()
+            
+            # Schedule periodic requests every 5 seconds until bootloader completes
+            def schedule_periodic_requests():
+                if remote_node.bootloader_state == "pending":
+                    request_bootloader_update()
+                    manager_node.node.defer(5.0, schedule_periodic_requests)
+            
+            # Start periodic requests
+            manager_node.node.defer(5.0, schedule_periodic_requests)
+
+            # Wait for bootloader completion with 30 second timeout
+            timeout_start = time.time()
+            timeout_duration = 30.0  # 30 second total timeout
+            
+            self._log_output(f"{str(remote_node)} waiting for bootloader completion (timeout: {timeout_duration}s)...")
+            
+            while remote_node.bootloader_state == "pending" and (time.time() - timeout_start) < timeout_duration:
+                try:
+                    manager_node.node.spin(0.1)
+                except:
+                    pass
+
+            # Remove the handler
+            try:
+                log_handler.remove()
+            except:
+                pass
+            
+            if remote_node.bootloader_state != "pending":
+                if remote_node.bootloader_state == "updated":
+                    self._log_output(f"{str(remote_node)} bootloader successfully updated")
+                elif remote_node.bootloader_state == "unchanged":
+                    self._log_output(f"{str(remote_node)} bootloader was already up to date")
+                return True  # Bootloader update successful
+            else:
+                self._log_output(f"{str(remote_node)} timeout waiting for bootloader completion after {timeout_duration}s")
+                remote_node.bootloader_state = "timeout"
+                return False  # Bootloader update failed/timeout
+                
+        except Exception as e:
+            self._log_output(f"{str(remote_node)} error during bootloader update: {str(e)}")
+
+    def _restart_node(self, manager_node: DroneCANNode, remote_node: RemoteDroneCANNode):
+        """Restart the node using RestartNode service"""
+        try:
+            self._log_output(f"{str(remote_node)} sending restart node request...")
+            
+            def on_restart_response(e):
+                if e is not None and e.response:
+                    if e.response.ok:
+                        self._log_output(f"{str(remote_node)} restart request acknowledged")
+                    else:
+                        self._log_output(f"{str(remote_node)} restart request failed")
+                else:
+                    self._log_output(f"{str(remote_node)} no response to restart request")
+            
+            # Create restart node request
+            restart_request = dronecan.uavcan.protocol.RestartNode.Request()
+            restart_request.magic_number = restart_request.MAGIC_NUMBER
+            
+            # Send restart request
+            manager_node.node.request(restart_request, remote_node.node_id, on_restart_response, priority=30)
+            
+            self._log_output(f"{str(remote_node)} restart request sent")
+            
+        except Exception as e:
+            self._log_output(f"{str(remote_node)} error during node restart: {str(e)}")
+
