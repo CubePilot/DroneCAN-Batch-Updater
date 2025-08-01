@@ -13,10 +13,19 @@ from logger import get_logger
 
 
 def get_resource_path(relative_path):
-    """Get absolute path to resource, works for dev and Nuitka onefile"""
+    """Get absolute path to resource, works for dev and Nuitka builds"""
     import os
-    base_path = Path(__file__).parent
-    print(f"Getting resource path for: {relative_path} at base path: {base_path}")
+    
+    # Check if running under Nuitka by checking if __compiled__ exists in globals
+    if "__compiled__" in globals():
+        # Running under Nuitka - use same directory as script file
+        base_path = Path(__file__).parent
+        print(f"Getting resource path for: {relative_path} at base path: {base_path} for Nuitka")
+    else:
+        # Running from source - go up one level to project root
+        base_path = Path(__file__).parent.parent
+        print(f"Getting resource path for: {relative_path} at base path: {base_path} for dev")
+
     return Path(base_path) / relative_path
 
 
