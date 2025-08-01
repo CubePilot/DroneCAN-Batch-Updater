@@ -7,9 +7,11 @@ A streamlined, interactive batch firmware update tool for CubeOrange/CubeOrangeP
 - **Two-Phase Operation**: 
   - Phase A: One-time Cube device detection & update
   - Phase B: Continuous DroneCAN device monitoring & auto-update
+- **Robust Device Detection**: Multi-attempt retry logic handles USB re-enumeration and bootloader transitions
+- **Multiple Device Support**: Parallel detection and updating of multiple Cube devices
 - **Minimal User Interaction**: Single confirmation prompt then fully automated
 - **Real-time Progress Display**: Grouped progress bars by device type
-- **Cross-platform**: Single binary for Windows, macOS, and Linux
+- **Cross-platform**: Single binary for Windows, macOS, and Linux with platform-specific optimizations
 - **Dynamic Node Allocation**: Built-in DNA server for DroneCAN devices
 
 ## Quick Start
@@ -113,24 +115,50 @@ DroneCAN Devices:
 └── Node 44 (com.cubepilot.compass) [░░░░░░░░░░░░░░░░░░░░] 0% Detected, updating...
 ```
 
+## Platform-Specific Notes
+
+### Linux
+- **USB Device Detection**: The tool uses robust retry logic to handle USB re-enumeration during bootloader transitions
+- **Multiple Devices**: Supports detection and parallel updating of multiple Cube devices
+- **Permissions**: Ensure user is in `dialout` group for serial port access:
+  ```bash
+  sudo usermod -a -G dialout $USER
+  newgrp dialout
+  ```
+
+### Windows
+- **COM Port Scanning**: Automatically scans COM1-COM255 for devices
+- **USB Drivers**: Ensure proper USB drivers are installed for Cube devices
+
+### macOS
+- **USB Interface**: Uses `/dev/tty.usbmodem*` pattern for device detection
+- **Security**: May require approval for USB device access
+
 ## Troubleshooting
 
 ### Common Issues
 
 1. **No Cube devices detected**
-   - Check USB connections
-   - Verify device is in bootloader mode
-   - Try different USB ports
+   - Check USB connections and try different ports
+   - Verify device is in bootloader mode (rapid LED blinking)
+   - On Linux: Check user permissions with `groups` command
+   - Try unplugging and reconnecting USB cable
 
-2. **DroneCAN devices not appearing**
-   - Verify CAN bus connections
-   - Check CAN port configuration
-   - Ensure devices are powered
+2. **Linux-specific detection issues**
+   - Tool automatically retries detection with proper USB re-enumeration handling
+   - Multiple USB interfaces (`-if00`, `-if02`) are handled automatically
+   - Bootloader transitions are managed with appropriate delays
 
-3. **Firmware not found**
-   - Check firmware directory structure
-   - Verify APJ/BIN file names
-   - Ensure GetNodeInfo returns correct device name
+3. **DroneCAN devices not appearing**
+   - Verify CAN bus connections and termination
+   - Check CAN port configuration in source code
+   - Ensure devices are powered and operational
+   - Use `mcast:0` for testing with single devices
+
+4. **Firmware not found**
+   - Check firmware directory structure matches expected format
+   - Verify APJ file board IDs match detected devices
+   - Ensure GetNodeInfo returns correct device identifier
 
 ### Debug Mode
 
