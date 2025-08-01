@@ -60,100 +60,79 @@ class CubeUpdater:
             print(message)
 
     def detect_devices(self) -> List[CubeDevice]:
-        """Detect all connected Cube devices with retry for USB port changes"""
+        """Detect all connected Cube devices using uploader.py's main detection pattern with retries"""
         devices = []
 
-        # Create a mock args object for ports_to_try function
+        # Create a mock args object for ports_to_try function  
         class MockArgs:
             def __init__(self):
                 self.port = None
 
         mock_args = MockArgs()
 
-        # Try detection multiple times to handle USB port changes
-        max_detection_rounds = 3
-
-        for detection_round in range(max_detection_rounds):
-            self._log_output(
-                f"[DEBUG] Device detection round " f"{detection_round + 1}/{max_detection_rounds}"
-            )
-
-            possible_ports = ports_to_try(mock_args)
-            round_devices = []
-
-            for port in possible_ports:
+        # Use uploader.py's exact detection pattern with continuous retry like main()
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            self._log_output(f"[DEBUG] Device detection attempt {attempt + 1}/{max_attempts}")
+            
+            for port in ports_to_try(mock_args):
+                # Skip ports we've already found devices on
+                if any(d.port == port for d in devices):
+                    self._log_output(f"[DEBUG] Skipping already detected port: {port}")
+                    continue
+                    
                 try:
-                    # Skip ports we've already successfully detected
-                    if any(d.port == port for d in devices):
-                        continue
+                    # Create log callback for device identification
+                    def log_callback(message):
+                        self._log_output(f"[UPLOADER] {port}: {message}")
 
-                    # Try to connect to each port and identify the device
-                    device = self._identify_device(port)
-                    if device:
-                        round_devices.append(device)
+                    # Create uploader instance exactly like uploader.py main() does
+                    up = uploader(
+                        port,
+                        115200,  # baud_bootloader
+                        [57600], # baud_flightstack  
+                        None,    # baud_bootloader_flash
+                        None,    # target_system
+                        None,    # target_component  
+                        255,     # source_system
+                        1,       # source_component
+                        False,   # no_extf
+                        False,   # force_erase
+                        log_callback=log_callback,
+                    )
+
+                    # Use uploader.py's find_bootloader exactly
+                    if find_bootloader(up, port):
+                        self._log_output(f"[DEBUG] Found Cube device on {port}")
+                        board_name = up.board_name_for_board_id(up.board_type) or f"Unknown_{up.board_type}"
+
+                        device = CubeDevice(
+                            port=port,
+                            board_type=up.board_type,
+                            board_rev=up.board_rev,
+                            board_name=board_name,
+                        )
+
+                        devices.append(device)
+                        up.close()
+                    else:
+                        up.close()
 
                 except Exception as e:
-                    # DEBUG_PRINT: Device detection error
-                    self._log_output(f"[DEBUG] Error detecting device on {port}: {e}")
+                    self._log_output(f"[DEBUG] Error on {port}: {e}")
                     continue
-
-            devices.extend(round_devices)
-
-            # If we found devices in this round, wait for potential port changes
-            if round_devices:
-                self._log_output(
-                    f"[DEBUG] Found {len(round_devices)} devices in round "
-                    f"{detection_round + 1}, waiting for port changes..."
-                )
-                time.sleep(2.0)
+            
+            # Continue scanning all attempts to find all possible devices
+            # Don't break early - we want to find ALL cubes
+                
+            # Small delay between attempts to allow USB re-enumeration
+            if attempt < max_attempts - 1:
+                self._log_output(f"[DEBUG] Completed attempt {attempt + 1}, waiting before next attempt...")
+                time.sleep(0.5)
 
         self.detected_devices = devices
         self._log_output(f"[DEBUG] Total devices detected: {len(devices)}")
         return devices
-
-    def _identify_device(self, port: str) -> Optional[CubeDevice]:
-        """Try to identify a device on the given port"""
-        try:
-            # Create log callback for device identification
-            def log_callback(message):
-                self._log_output(f"[UPLOADER] {port}: {message}")
-
-            # Create uploader instance with minimal configuration
-            up = uploader(
-                portname=port,
-                baudrate_bootloader=115200,
-                baudrate_flightstack=[57600],
-                baudrate_bootloader_flash=None,
-                target_system=None,
-                target_component=None,
-                source_system=255,
-                source_component=1,
-                no_extf=False,
-                force_erase=False,
-                log_callback=log_callback,
-            )
-
-            # Try to find and identify the bootloader
-            if find_bootloader(up, port):
-                board_name = up.board_name_for_board_id(up.board_type) or f"Unknown_{up.board_type}"
-
-                device = CubeDevice(
-                    port=port,
-                    board_type=up.board_type,
-                    board_rev=up.board_rev,
-                    board_name=board_name,
-                )
-
-                up.close()
-                return device
-
-            up.close()
-
-        except Exception as e:
-            # DEBUG_PRINT: Device identification error
-            self._log_output(f"[DEBUG] Failed to identify device on {port}: {e}")
-
-        return None
 
 
     def check_firmware_versions(self, devices: List[CubeDevice]) -> List[CubeDevice]:
