@@ -16,7 +16,7 @@ This manual guides you through updating multiple Here4 GNSS/RTK units using the 
 - **Computer** running Windows, macOS, or Linux
 
 #### Software Requirements
-- **dronecan-batch-updater** executable (standalone application)
+- [**dronecan-batch-updater** executable (standalone application)](https://github.com/CubePilot/DroneCAN-Batch-Updater/releases/latest)
 
 ---
 
@@ -25,7 +25,7 @@ This manual guides you through updating multiple Here4 GNSS/RTK units using the 
 ### Step 1: Install Software
 
 1. **Download and extract the application**
-   - Download the `dronecan-batch-updater` zip file for your platform
+   - Download the [dronecan-batch-updater](https://github.com/CubePilot/DroneCAN-Batch-Updater/releases/latest) zip file for your platform
    - Extract the zip file to get the executable
 
 2. **Make executable** (Linux/macOS only):
