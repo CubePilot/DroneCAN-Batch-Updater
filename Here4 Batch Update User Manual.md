@@ -321,10 +321,10 @@ For production-scale updating of many Here4 units, use this efficient 4-station 
 - **Move completed units** to testing station
 
 #### Station 3: Functional Testing
-- **Connect to CubeOrangePlus** running latest ArduPilot stable firmware
+- **Connect to CubeOrangePlus** on CAN 1 running this ArduPilot stable firmware with Mission Planner connected.
+- Set parameter CAN_P1_DRIVER set to 1. Make sure to reset node allocation by setting CAN_D1_UC_OPTIONS to 1, every 100 units or so.
 - **Power via proper 5V supply** 
 - **Verify LED pattern** - should display **rainbow pattern** indicating proper operation after initialization. constant **Red breathing** might indicate either a fault with CAN Bus (ensure you are connecting White CAN cable from Here4 not Red).
-- **Check Here4 LED pattern** - should show proper rainbow initialization sequence
 
 <div align="center">
 <img src="Here4%20CAN.jpeg" alt="Here4 CAN Connection" width="300">
