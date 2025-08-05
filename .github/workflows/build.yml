@@ -53,20 +53,43 @@ jobs:
         cache: 'pip'
         cache-dependency-path: requirements.txt
 
-    - name: Cache Nuitka compilation cache
+    - name: Cache Nuitka compilation cache (Linux)
+      if: matrix.os == 'linux'
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/Nuitka
           ~/.local/share/Nuitka/Cache
-          ~/AppData/Local/Nuitka/Nuitka/Cache
           ~/.cache/ccache
-          ~/Library/Caches/ccache
-          ~/AppData/Local/ccache
-        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('src/**/*.py', 'requirements.txt', 'firmware/**') }}
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
         restore-keys: |
-          nuitka-${{ matrix.os }}-${{ matrix.arch }}-
-          nuitka-${{ matrix.os }}-
+          nuitka-${{ matrix.os }}-${{ matrix.arch }}
+          nuitka-${{ matrix.os }}
+
+    - name: Cache Nuitka compilation cache (macOS)
+      if: matrix.os == 'macos'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/Nuitka
+          ~/.local/share/Nuitka/Cache
+          ~/Library/Caches/ccache
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
+        restore-keys: |
+          nuitka-${{ matrix.os }}-${{ matrix.arch }}
+          nuitka-${{ matrix.os }}
+
+    - name: Cache Nuitka compilation cache (Windows)
+      if: matrix.os == 'windows'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/AppData/Local/Nuitka/Nuitka/Cache
+          ~/AppData/Local/ccache
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
+        restore-keys: |
+          nuitka-${{ matrix.os }}-${{ matrix.arch }}
+          nuitka-${{ matrix.os }}
 
     - name: Install dependencies
       run: |
