@@ -135,9 +135,9 @@ jobs:
         # Copy firmware directory
         cp -r ../../firmware ../../artifacts/${{ matrix.artifact-name }}/
         
-        # Copy README
-        cp ../../README.md ../../artifacts/${{ matrix.artifact-name }}/
-        
+        # Copy Here4 Batch Updater User Manual
+        cp "../../Here4 Batch Update User Manual.md" ../../artifacts/${{ matrix.artifact-name }}/
+
         # Create a simple run script for each platform
         if [[ "${{ matrix.os }}" == "windows" ]]; then
           echo '@echo off' > ../../artifacts/${{ matrix.artifact-name }}/run.bat
@@ -148,7 +148,7 @@ jobs:
           echo './dronecan-batch-updater "$@"' >> ../../artifacts/${{ matrix.artifact-name }}/run.sh
           chmod +x ../../artifacts/${{ matrix.artifact-name }}/run.sh
         fi
-
+    
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -171,78 +171,33 @@ jobs:
       with:
         path: artifacts
         pattern: dronecan-batch-updater-*
-        merge-multiple: true
 
-    - name: Create release archives
+    - name: List downloaded artifacts
       run: |
-        cd artifacts
-        ls -la
-        # artifacts/download-artifact@v4 creates a flatter structure
-        # Each artifact is now directly in the artifacts directory
-        for artifact_dir in dronecan-batch-updater-*; do
-          if [[ -d "$artifact_dir" ]]; then
-            if [[ "$artifact_dir" == *"windows"* ]]; then
-              # Create ZIP for Windows
-              zip -r "${artifact_dir}.zip" "$artifact_dir"
-            else
-              # Create tar.gz for Unix systems
-              tar -czf "${artifact_dir}.tar.gz" "$artifact_dir"
-            fi
-          fi
-        done
-        ls -la *.{zip,tar.gz} || true
+        echo "Downloaded artifacts:"
+        ls -la artifacts/
 
-    - name: Extract release notes
-      id: extract_notes
+    - name: Extract version
+      id: extract_version
       run: |
         # Extract version from tag
         VERSION=${GITHUB_REF#refs/tags/v}
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        
-        # Create basic release notes
-        cat > release_notes.md << EOF
-        # DroneCAN Batch Firmware Updater v$VERSION
-        
-        Built with Nuitka for optimal performance and reliability.
-        
-        ## Downloads
-        
-        Choose the appropriate build for your platform:
-        
-        - **macOS (Intel)**: dronecan-batch-updater-macos-x64.tar.gz
-        - **macOS (Apple Silicon)**: dronecan-batch-updater-macos-arm64.tar.gz  
-        - **Linux (x64)**: dronecan-batch-updater-linux-x64.tar.gz
-        - **Windows (x64)**: dronecan-batch-updater-windows-x64.zip
-        
-        ## Usage
-        
-        1. Extract the archive for your platform
-        2. Place your firmware files in the \`firmware/\` directory
-        3. Run the executable:
-           - **macOS/Linux**: \`./run.sh\` or \`./dronecan-batch-updater\`
-           - **Windows**: \`run.bat\` or \`dronecan-batch-updater.exe\`
-        
-        ## Features
-        
-        - Cross-platform support (macOS, Linux, Windows)
-        - Automatic Cube firmware updates
-        - DroneCAN device monitoring and updating
-        - Multi-interface parallel processing
-        - Real-time progress display
-        - Native compilation with Nuitka for better performance
-        
-        EOF
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        name: DroneCAN Batch Updater v${{ steps.extract_notes.outputs.version }}
-        body_path: release_notes.md
-        files: |
-          artifacts/*.zip
-          artifacts/*.tar.gz
-        draft: false
-        prerelease: false
+    - name: Upload Release Assets
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Upload each zip file to the release
+        for zip_file in artifacts/*; do
+          # create zip file for each folder
+          if [[ -d "$zip_file" ]]; then
+            zip_name="${zip_file##*/}.zip"
+            zip -r "artifacts/$zip_name" "$zip_file"
+            echo "Uploading $zip_name to release"
+            gh release upload ${{ github.ref_name }} "artifacts/$zip_name" --clobber
+          fi
+        done
 
   test-builds:
     name: Test Builds
