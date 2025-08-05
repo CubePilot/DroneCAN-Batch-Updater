@@ -61,6 +61,7 @@ jobs:
           ~/.cache/Nuitka
           ~/.local/share/Nuitka/Cache
           ~/.cache/ccache
+          dist/nuitka/main.build
         key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
         restore-keys: |
           nuitka-${{ matrix.os }}-${{ matrix.arch }}
@@ -74,6 +75,7 @@ jobs:
           ~/.cache/Nuitka
           ~/.local/share/Nuitka/Cache
           ~/Library/Caches/ccache
+          dist/nuitka/main.build
         key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
         restore-keys: |
           nuitka-${{ matrix.os }}-${{ matrix.arch }}
@@ -86,6 +88,7 @@ jobs:
         path: |
           ~/AppData/Local/Nuitka/Nuitka/Cache
           ~/AppData/Local/ccache
+          dist/nuitka/main.build
         key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
         restore-keys: |
           nuitka-${{ matrix.os }}-${{ matrix.arch }}
