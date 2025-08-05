@@ -202,25 +202,18 @@ No CubeOrange devices found. Please check connections.
 **Solutions:**
 1. **Check CAN connections**
    - Verify CAN-H and CAN-L wiring is correct
-   - Ensure 120Ω terminators at both ends of CAN bus
    - Check for loose connections at CAN connectors
 
 2. **Power supply verification**
-   - Here4 requires stable **5V power** (4.5-5.5V range)
+   - Here4 requires stable **5V power** (5.0-5.3V range)
    - Check power LED on Here4 units (should be solid)
    - Verify adequate power supply capacity for all units
    - Ensure good ground connections
 
 3. **CAN bus health**
    - Check CAN bus isn't overloaded (too many devices)
-   - Verify no conflicting node IDs
    - Test with single Here4 first
    - Use shorter CAN cable runs if possible
-
-4. **Cube CAN port configuration**
-   - Tool automatically detects CAN2 port as shown in interface
-   - Ensure CAN port is enabled and configured correctly
-   - Try different CAN port if available (CAN1 vs CAN2)
 
 ### SLCAN Errors flooding the console
 **Problem:** Errors dumping into console from SLCAN backend
@@ -253,7 +246,8 @@ No CubeOrange devices found. Please check connections.
 
 4. **Manual retry for failures**
    - Tool does not automatically retry failed updates
-   - If update fails, restart the tool and try again
+   - If update fails, remove the device wait for removal from UI and then replug
+   - Restart the tool and try again
    - Check hardware connections before retrying
 
 ---
@@ -288,12 +282,8 @@ After all updates complete:
    - Note final node IDs assigned to each Here4
 
 2. **Functional testing**
-   - Use a different Cube updated to stable ArduPilot release for testing
-   - Power cycle all Here4 units
-   - Verify LED patterns indicate normal operation
-   - Test GNSS signal acquisition if possible
-   - Confirm devices appear in ground station software
-
+   - Verify LED patterns indicate normal operation (They should do Blue Breathing after the update using the tool)
+   - When connected to latest Stable Cube with CAN configured they should blue breath then eventually boot into Rainbow flash after 5s.
 ---
 
 ## Advanced Tips
