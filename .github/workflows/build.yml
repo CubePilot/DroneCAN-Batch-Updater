@@ -53,9 +53,9 @@ jobs:
         cache: 'pip'
         cache-dependency-path: requirements.txt
 
-    - name: Cache Nuitka compilation cache (Linux)
+    - name: Restore Nuitka compilation cache (Linux)
       if: matrix.os == 'linux'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.cache/Nuitka
@@ -67,13 +67,12 @@ jobs:
           nuitka-${{ matrix.os }}-${{ matrix.arch }}
           nuitka-${{ matrix.os }}
 
-    - name: Cache Nuitka compilation cache (macOS)
+    - name: Restore Nuitka compilation cache (macOS)
       if: matrix.os == 'macos'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: |
-          ~/.cache/Nuitka
-          ~/.local/share/Nuitka/Cache
+          ~/Library/Caches/Nuitka
           ~/Library/Caches/ccache
           dist/nuitka/main.build
         key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
@@ -81,9 +80,9 @@ jobs:
           nuitka-${{ matrix.os }}-${{ matrix.arch }}
           nuitka-${{ matrix.os }}
 
-    - name: Cache Nuitka compilation cache (Windows)
+    - name: Restore Nuitka compilation cache (Windows)
       if: matrix.os == 'windows'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/AppData/Local/Nuitka/Nuitka/Cache
@@ -98,6 +97,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Install ccache (Linux)
+      if: matrix.os == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ccache
+        echo "/usr/lib/ccache" >> $GITHUB_PATH
 
     - name: Run linting (Linux only)
       if: matrix.os == 'linux'
@@ -155,6 +161,37 @@ jobs:
         name: ${{ matrix.artifact-name }}
         path: artifacts/${{ matrix.artifact-name }}
         retention-days: 30
+
+    - name: Save Nuitka compilation cache (Linux)
+      if: matrix.os == 'linux'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.cache/Nuitka
+          ~/.local/share/Nuitka/Cache
+          ~/.cache/ccache
+          dist/nuitka/main.build
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
+
+    - name: Save Nuitka compilation cache (macOS)
+      if: matrix.os == 'macos'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/Library/Caches/Nuitka
+          ~/Library/Caches/ccache
+          dist/nuitka/main.build
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
+
+    - name: Save Nuitka compilation cache (Windows)
+      if: matrix.os == 'windows'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/AppData/Local/Nuitka/Nuitka/Cache
+          ~/AppData/Local/ccache
+          dist/nuitka/main.build
+        key: nuitka-${{ matrix.os }}-${{ matrix.arch }}
 
   create-release:
     name: Create Release
