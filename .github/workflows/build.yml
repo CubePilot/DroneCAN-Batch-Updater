@@ -230,9 +230,11 @@ jobs:
           # create zip file for each folder
           if [[ -d "$zip_file" ]]; then
             zip_name="${zip_file##*/}.zip"
-            zip -r "artifacts/$zip_name" "$zip_file"
+            cd artifacts
+            zip -r "$zip_name" "${zip_file##*/}"
             echo "Uploading $zip_name to release"
-            gh release upload ${{ github.ref_name }} "artifacts/$zip_name" --clobber
+            gh release upload ${{ github.ref_name }} "$zip_name" --clobber
+            cd ..
           fi
         done
 
