@@ -336,17 +336,3 @@ For production-scale updating of many Here4 units, use this efficient 4-station 
 #### Station 4: Repacking
 - **Final visual inspection** of updated units
 - **Repack units** into shipping boxes
-- **Label with firmware version** and update date
-- **Quality control documentation**
-
-**Production Flow Benefits:**
-- **Parallel processing** - multiple stations operating simultaneously
-- **Quality assurance** at each stage
-- **Clear pass/fail indicators** (blue breathing → rainbow pattern)
-- **Efficient throughput** for large quantities
-
-**Cable Management:**
-- Use quality CAN cables with proper shielding
-- Keep CAN bus runs as short as practical
-- Avoid parallel runs with power cables
-- Use proper strain relief at connectors
