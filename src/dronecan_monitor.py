@@ -553,8 +553,7 @@ class DroneCaNMonitor:
             self.progress_ui.update_dronecan_progress(str(remote_node), "uploading", 20)
 
             # Track update state
-            update_started = False
-            update_complete = False
+            update_state = "pending"
             start_time = None
             last_progress = 0
             last_kb_flashed = 0
@@ -562,15 +561,15 @@ class DroneCaNMonitor:
             self._log_output("Setting up update handlers and starting request...")
 
             def on_node_status(e):
-                nonlocal update_started, update_complete, start_time, last_progress, last_kb_flashed
+                nonlocal update_state, start_time, last_progress, last_kb_flashed
 
                 if e.transfer.source_node_id == remote_node.node_id:
                     current_mode = e.message.mode
 
                     if current_mode == e.message.MODE_SOFTWARE_UPDATE:
-                        if not update_started:
+                        if update_state == "pending":
                             self._log_output(f"{str(remote_node)} entered firmware update mode")
-                            update_started = True
+                            update_state = "started"
                             start_time = time.time()
                             last_progress = 50
                             self.progress_ui.update_dronecan_progress(str(remote_node), "updating", 50)
@@ -599,13 +598,13 @@ class DroneCaNMonitor:
                                         str(remote_node), "updating", progress_percent
                                     )
                     elif current_mode == e.message.MODE_OPERATIONAL:
-                        if update_started and not update_complete:
+                        if update_state == "started":
                             elapsed = time.time() - start_time
                             self._log_output(
                                 f"{str(remote_node)} returned to operational mode - firmware update "
                                 f"completed in {elapsed:.1f} seconds"
                             )
-                            update_complete = True
+                            update_state = "complete"
                             last_progress = 90
                             # Update to bootloader phase instead of complete
                             try:
@@ -637,7 +636,7 @@ class DroneCaNMonitor:
                                 
                             except Exception as e:
                                 self._log_output(f"Error during bootloader/restart phase: {e}")
-                    elif update_started and not update_complete:
+                    elif update_state == "started":
                         # Device exited SOFTWARE_UPDATE mode but not to OPERATIONAL
                         # Might be rebooting
                         self._log_output(f"{str(remote_node)} mode changed to {current_mode} (rebooting...)")
@@ -659,7 +658,7 @@ class DroneCaNMonitor:
                     self._log_output(f"{str(remote_node)} no response to firmware update request")
 
             def request_update():
-                if not update_started:
+                if update_state == "pending":
                     self._log_output(f"{str(remote_node)} sending firmware update request...")
                     request = (
                         dronecan.uavcan.protocol.file.BeginFirmwareUpdate.Request(
@@ -680,7 +679,7 @@ class DroneCaNMonitor:
 
             # Schedule periodic requests every 1 second until update starts
             def schedule_periodic_requests():
-                if not update_started:
+                if update_state == "pending":
                     request_update()
                     manager_node.node.defer(1.0, schedule_periodic_requests)
 
@@ -695,7 +694,7 @@ class DroneCaNMonitor:
                 f"Waiting for update to start and complete (timeout: {timeout}s)..."
             )
 
-            while not update_started or not update_complete:
+            while update_state != "complete" and update_state != "failed":
                 if time.time() - start_wait > timeout:
                     self._log_output(f"Firmware update timeout after {timeout} seconds")
                     return False

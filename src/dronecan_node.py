@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import dronecan
-
+import dronecan.driver.slcan
+import sys
+#
+# Constants and defaults
+#
+if 'darwin' in sys.platform:
+    dronecan.driver.slcan.TX_QUEUE_SIZE = 32767   # http://stackoverflow.com/questions/5900985/multiprocessing-queue-maxsize-limit-is-32767
+else:
+    dronecan.driver.slcan.TX_QUEUE_SIZE = 1000000
 
 class RemoteDroneCANNode:
     """Represents a remote DroneCAN device discovered on the network"""
