@@ -14,13 +14,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # macOS builds
-          - os: macos
-            arch: x64
-            runner: macos-13
-            python-version: '3.10'
-            artifact-name: dronecan-batch-updater-macos-x64
-            executable-name: dronecan-batch-updater
           - os: macos
             arch: arm64
             runner: macos-14
